@@ -17,7 +17,11 @@ export const metadata: Metadata = {
   description: "Task-Select este o platformă de management task-uri.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html
       lang="en"
