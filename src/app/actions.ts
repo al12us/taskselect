@@ -141,6 +141,11 @@ export async function getTasks(projectId?: string, priority?: string, search?: s
   });
 }
 
+// Server Action dedicat pentru filtrare asincronă cu revalidare
+export async function filterTasksAction(projectId?: string, priority?: string, search?: string) {
+  return getTasks(projectId, priority, search);
+}
+
 export async function createTask(formData: FormData) {
   const title = formData.get('title') as string;
   const description = formData.get('description') as string;

@@ -90,40 +90,57 @@ export default function Sidebar({
               projects.map((p) => {
                 const isSelected = selectedProjectId === p.id;
                 const completedCount = p.tasks.filter((t) => t.status === 'DONE').length;
+                const percent = p.tasks.length > 0 ? Math.round((completedCount / p.tasks.length) * 100) : 0;
+
                 return (
                   <div
                     key={p.id}
-                    className={`group flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition cursor-pointer ${
+                    className={`group px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer space-y-1.5 ${
                       isSelected
-                        ? 'bg-slate-800 text-white border border-slate-700 shadow-sm'
-                        : 'text-slate-300 hover:bg-slate-800/40 hover:text-white'
+                        ? 'bg-slate-800 text-white border border-slate-700 shadow-md'
+                        : 'text-slate-300 hover:bg-slate-800/50 hover:text-white border border-transparent'
                     }`}
                     onClick={() => onSelectProject(p.id)}
                   >
-                    <div className="flex items-center gap-2.5 truncate">
-                      <span
-                        className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
-                        style={{ backgroundColor: p.color }}
-                      />
-                      <span className="truncate">{p.title}</span>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5 truncate">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm transition-transform group-hover:scale-125"
+                          style={{ backgroundColor: p.color }}
+                        />
+                        <span className="truncate font-semibold text-xs text-slate-200 group-hover:text-white">
+                          {p.title}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] text-slate-400 font-mono font-medium">
+                          {completedCount}/{p.tasks.length}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(`Ești sigur că vrei să elimini proiectul "${p.title}"?`)) {
+                              onDeleteProject(p.id);
+                            }
+                          }}
+                          title="Șterge proiect"
+                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-400 transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="text-[11px] text-slate-400 font-mono">
-                        {completedCount}/{p.tasks.length}
-                      </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm(`Ești sigur că vrei să elimini proiectul "${p.title}"?`)) {
-                            onDeleteProject(p.id);
-                          }
+                    {/* Mini Progress Bar in Sidebar */}
+                    <div className="w-full bg-slate-800/80 h-1 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{
+                          width: `${percent}%`,
+                          backgroundColor: p.color,
                         }}
-                        title="Șterge proiect"
-                        className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-400 transition"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      />
                     </div>
                   </div>
                 );

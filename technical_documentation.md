@@ -19,6 +19,7 @@ graph TD
         StatsHeader[StatsHeader.tsx: KPI & Filtre]
         KanbanBoard[KanbanBoard.tsx: Bord 3 Coloane]
         TaskTable[TaskTableView.tsx: Vizualizare Tabelară]
+        ProjectCards[ProjectCardsView.tsx: Grilă Carduri Interactive]
         NewTaskModal[NewTaskModal.tsx]
         NewProjModal[NewProjectModal.tsx]
 
@@ -26,6 +27,7 @@ graph TD
         DashboardView --> StatsHeader
         DashboardView --> KanbanBoard
         DashboardView --> TaskTable
+        DashboardView --> ProjectCards
         DashboardView --> NewTaskModal
         DashboardView --> NewProjModal
     end
@@ -95,36 +97,42 @@ erDiagram
 
 ## 3. Ciclul de Viață al Mutațiilor prin Server Actions
 
-Spre deosebire de o arhitectură clasică bazată pe `fetch('/api/...')` și `useEffect`, mutațiile din TaskSelect utilizează Server Actions:
+Spre deosebire de o arhitectură clasică bazată pe `fetch('/api/...')` și `useEffect`, mutațiile din TaskSelect utilizează Server Actions cuplate cu hook-ul **React 19 `useOptimistic`** pentru o reacție instantanee (0ms latență vizuală):
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Utilizator
-    participant UI as Componentă Client (ex: KanbanBoard)
+    participant UI as Componentă Client (KanbanBoard)
+    participant OptState as React 19 useOptimistic
     participant Action as Server Action (actions.ts)
     participant Prisma as Prisma ORM
     participant DB as SQLite (dev.db)
-    participant Cache as Next.js Page Cache
 
-    Utilizator->>UI: Click pe butonul de avansare stare
+    Utilizator->>UI: Drag & Drop sau Click "Înainte"
+    UI->>OptState: setOptimisticTasks(UPDATE_STATUS)
+    OptState-->>UI: Re-randare INSTANTANEE (0ms) în noua coloană!
     UI->>Action: updateTaskStatus(taskId, "IN_PROGRESS")
     Action->>Prisma: prisma.task.update(where, data)
     Prisma->>DB: UPDATE Task SET status = ...
-    DB-->>Prisma: Înregistrare actualizată
-    Action->>Cache: revalidatePath('/')
-    Cache-->>UI: Re-randare Server Component cu noile date
+    DB-->>Prisma: Înregistrare persistată în SQLite
+    Action-->>UI: Revalidare fundal confirmată
 ```
 
 ### Server Actions Implementate:
 1. **`getProjects()`**: Interoghează lista proiectelor împreună cu numărul de task-uri finalizate și totale.
 2. **`createProject(formData)`**: Extrage valorile `title`, `description`, `color` din formular și creează înregistrarea.
 3. **`deleteProject(id)`**: Șterge proiectul și revalidează pagina.
-4. **`getTasks(projectId?, priority?, search?)`**: Interogare flexibilă cu filtrare direct pe server.
-5. **`createTask(formData)`**: Validează câmpurile obligatorii și persistă sarcina în baza de date.
-6. **`updateTaskStatus(id, status)`**: Actualizează starea sarcinii (`TODO` -> `IN_PROGRESS` -> `DONE`).
-7. **`deleteTask(id)`**: Elimină sarcina selectată.
-8. **`seedInitialDataIfEmpty()`**: Populează automat baza de date la prima rulare dacă nu există proiecte.
+4. **`getTasks(projectId?, priority?, search?)`**: Interogare flexibilă cu filtrare direct pe server în Prisma / SQLite.
+5. **`filterTasksAction(projectId?, priority?, search?)`**: Server Action apelabil dinamic din interfață pentru filtrare asincronă cu indicator de încărcare în timp real și sincronizare URL.
+6. **`createTask(formData)`**: Validează câmpurile obligatorii și persistă sarcina în baza de date.
+7. **`updateTaskStatus(id, status)`**: Actualizează starea sarcinii (`TODO` -> `IN_PROGRESS` -> `DONE`).
+8. **`deleteTask(id)`**: Elimină sarcina selectată.
+9. **`seedInitialDataIfEmpty()`**: Populează automat baza de date la prima rulare dacă nu există proiecte.
+
+### Integrarea Server-Side Data Fetching cu Revalidare Dinamică:
+- **Inițializare SSR prin `searchParams`**: La accesarea paginii rădăcină [src/app/page.tsx](file:///c:/PORTABLE/dev/projects/FirstReact_project_react/NextJS_Tutorial/taskselect/src/app/page.tsx), parametrii de interogare din URL (`?project=...&priority=...&search=...`) sunt citiți asincron pe server, iar interogarea Prisma rulează direct cu clauzele `WHERE` corespunzătoare.
+- **Sincronizare URL Bidirecțională**: Modificarea filtrelor din interfață apelează Server Action-ul `filterTasksAction` în interiorul unui apel `useTransition`, actualizând parametrii din bara de adresă a browserului (`window.history.replaceState`) fără reîncărcarea paginii. Astfel, orice stare de filtrare poate fi partajată prin link sau reîmprospătată cu `F5` păstrând datele intacte.
 
 ---
 

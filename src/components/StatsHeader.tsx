@@ -1,20 +1,21 @@
 'use client';
 
 import React from 'react';
-import { CheckCircle2, Clock, ListTodo, Plus, LayoutGrid, ListFilter, Search } from 'lucide-react';
+import { CheckCircle2, Clock, ListTodo, Plus, LayoutGrid, ListFilter, Search, FolderKanban } from 'lucide-react';
 
 interface StatsHeaderProps {
   totalCount: number;
   todoCount: number;
   inProgressCount: number;
   doneCount: number;
-  activeView: 'KANBAN' | 'LIST';
-  onChangeView: (view: 'KANBAN' | 'LIST') => void;
+  activeView: 'KANBAN' | 'LIST' | 'PROJECTS';
+  onChangeView: (view: 'KANBAN' | 'LIST' | 'PROJECTS') => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   selectedPriority: string;
   onPriorityChange: (p: string) => void;
   onOpenNewTaskModal: () => void;
+  isFiltering?: boolean;
 }
 
 export default function StatsHeader({
@@ -29,6 +30,7 @@ export default function StatsHeader({
   selectedPriority,
   onPriorityChange,
   onOpenNewTaskModal,
+  isFiltering,
 }: StatsHeaderProps) {
   const completionPercentage = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
 
@@ -37,7 +39,15 @@ export default function StatsHeader({
       {/* Top Bar: Title & Primary CTA */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-white tracking-tight">Panou de Activitate</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-bold text-white tracking-tight">Panou de Activitate</h2>
+            {isFiltering && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30 animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                Filtrare server...
+              </span>
+            )}
+          </div>
           <p className="text-sm text-slate-400 mt-1">
             Urmărește și actualizează progresul proiectelor în timp real.
           </p>
@@ -133,11 +143,11 @@ export default function StatsHeader({
           </div>
         </div>
 
-        {/* View Toggle (Kanban vs List) */}
-        <div className="flex items-center bg-slate-800 border border-slate-700 p-1 rounded-lg self-start sm:self-auto">
+        {/* View Toggle (Kanban vs List vs Projects) */}
+        <div className="flex items-center bg-slate-800 border border-slate-700 p-1 rounded-lg self-start sm:self-auto gap-0.5">
           <button
             onClick={() => onChangeView('KANBAN')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
               activeView === 'KANBAN'
                 ? 'bg-blue-600 text-white shadow'
                 : 'text-slate-400 hover:text-white'
@@ -148,7 +158,7 @@ export default function StatsHeader({
           </button>
           <button
             onClick={() => onChangeView('LIST')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
               activeView === 'LIST'
                 ? 'bg-blue-600 text-white shadow'
                 : 'text-slate-400 hover:text-white'
@@ -156,6 +166,17 @@ export default function StatsHeader({
           >
             <ListTodo className="w-3.5 h-3.5" />
             <span>Listă</span>
+          </button>
+          <button
+            onClick={() => onChangeView('PROJECTS')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+              activeView === 'PROJECTS'
+                ? 'bg-blue-600 text-white shadow'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <FolderKanban className="w-3.5 h-3.5" />
+            <span>Proiecte</span>
           </button>
         </div>
       </div>

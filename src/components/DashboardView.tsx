@@ -1,65 +1,134 @@
 'use client';
 
-import React, { useState, useTransition } from 'react';
+import React, { useState, useTransition, useOptimistic, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import StatsHeader from './StatsHeader';
 import KanbanBoard, { TaskItem } from './KanbanBoard';
 import TaskTableView from './TaskTableView';
+import ProjectCardsView from './ProjectCardsView';
 import NewTaskModal from './NewTaskModal';
 import NewProjectModal from './NewProjectModal';
-import { updateTaskStatus, deleteTask, deleteProject } from '@/app/actions';
+import { updateTaskStatus, deleteTask, deleteProject, filterTasksAction } from '@/app/actions';
 
 interface ProjectItem {
   id: string;
   title: string;
   description: string | null;
   color: string;
+  status: string;
   tasks: { id: string; status: string }[];
 }
 
 interface DashboardViewProps {
   projects: ProjectItem[];
-  tasks: TaskItem[];
+  initialTasks: TaskItem[];
+  initialProjectId?: string;
+  initialPriority?: string;
+  initialSearch?: string;
 }
 
-export default function DashboardView({ projects, tasks }: DashboardViewProps) {
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('ALL');
-  const [selectedPriority, setSelectedPriority] = useState<string>('ALL');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [activeView, setActiveView] = useState<'KANBAN' | 'LIST'>('KANBAN');
+type OptimisticAction =
+  | { type: 'UPDATE_STATUS'; taskId: string; newStatus: 'TODO' | 'IN_PROGRESS' | 'DONE' }
+  | { type: 'DELETE_TASK'; taskId: string };
+
+export default function DashboardView({
+  projects,
+  initialTasks,
+  initialProjectId = 'ALL',
+  initialPriority = 'ALL',
+  initialSearch = '',
+}: DashboardViewProps) {
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(initialProjectId);
+  const [selectedPriority, setSelectedPriority] = useState<string>(initialPriority);
+  const [searchQuery, setSearchQuery] = useState<string>(initialSearch);
+  const [rawTasks, setRawTasks] = useState<TaskItem[]>(initialTasks);
+  const [activeView, setActiveView] = useState<'KANBAN' | 'LIST' | 'PROJECTS'>('KANBAN');
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
 
-  // Filter tasks locally for instant snappy feedback
-  const filteredTasks = tasks.filter((t) => {
-    if (selectedProjectId !== 'ALL' && t.project.id !== selectedProjectId) {
-      return false;
-    }
-    if (selectedPriority !== 'ALL' && t.priority !== selectedPriority) {
-      return false;
-    }
-    if (searchQuery.trim() !== '') {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = t.title.toLowerCase().includes(q);
-      const matchDesc = t.description?.toLowerCase().includes(q) || false;
-      if (!matchTitle && !matchDesc) return false;
-    }
-    return true;
-  });
+  // Actualizează task-urile din props dacă server component-ul revalidează pagina
+  useEffect(() => {
+    setRawTasks(initialTasks);
+  }, [initialTasks]);
 
-  const todoCount = filteredTasks.filter((t) => t.status === 'TODO').length;
-  const inProgressCount = filteredTasks.filter((t) => t.status === 'IN_PROGRESS').length;
-  const doneCount = filteredTasks.filter((t) => t.status === 'DONE').length;
+  // Server-side filtering handler prin Server Actions
+  const executeServerFilter = (
+    nextProjectId: string,
+    nextPriority: string,
+    nextSearch: string
+  ) => {
+    startTransition(async () => {
+      // 1. Apel către Server Action care rulează interogarea Prisma / SQLite direct pe server
+      const filteredResult = await filterTasksAction(
+        nextProjectId,
+        nextPriority,
+        nextSearch
+      );
+      setRawTasks(filteredResult);
+
+      // 2. Sincronizare URL SearchParams în browser fără reîncărcare de pagină
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        if (nextProjectId !== 'ALL') url.searchParams.set('project', nextProjectId);
+        else url.searchParams.delete('project');
+
+        if (nextPriority !== 'ALL') url.searchParams.set('priority', nextPriority);
+        else url.searchParams.delete('priority');
+
+        if (nextSearch.trim() !== '') url.searchParams.set('search', nextSearch.trim());
+        else url.searchParams.delete('search');
+
+        window.history.replaceState({}, '', url.toString());
+      }
+    });
+  };
+
+  const handleSelectProject = (projectId: string) => {
+    setSelectedProjectId(projectId);
+    executeServerFilter(projectId, selectedPriority, searchQuery);
+  };
+
+  const handlePriorityChange = (priority: string) => {
+    setSelectedPriority(priority);
+    executeServerFilter(selectedProjectId, priority, searchQuery);
+  };
+
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+    executeServerFilter(selectedProjectId, selectedPriority, query);
+  };
+
+  // Optimistic UI updates pentru 0ms reacție instantanee pe ecran
+  const [optimisticTasks, setOptimisticTasks] = useOptimistic(
+    rawTasks,
+    (currentTasks: TaskItem[], action: OptimisticAction) => {
+      if (action.type === 'UPDATE_STATUS') {
+        return currentTasks.map((t) =>
+          t.id === action.taskId ? { ...t, status: action.newStatus } : t
+        );
+      }
+      if (action.type === 'DELETE_TASK') {
+        return currentTasks.filter((t) => t.id !== action.taskId);
+      }
+      return currentTasks;
+    }
+  );
+
+  const todoCount = optimisticTasks.filter((t) => t.status === 'TODO').length;
+  const inProgressCount = optimisticTasks.filter((t) => t.status === 'IN_PROGRESS').length;
+  const doneCount = optimisticTasks.filter((t) => t.status === 'DONE').length;
 
   function handleUpdateStatus(taskId: string, newStatus: 'TODO' | 'IN_PROGRESS' | 'DONE') {
     startTransition(async () => {
+      setOptimisticTasks({ type: 'UPDATE_STATUS', taskId, newStatus });
       await updateTaskStatus(taskId, newStatus);
     });
   }
 
   function handleDeleteTask(taskId: string) {
     startTransition(async () => {
+      setOptimisticTasks({ type: 'DELETE_TASK', taskId });
       await deleteTask(taskId);
     });
   }
@@ -69,6 +138,7 @@ export default function DashboardView({ projects, tasks }: DashboardViewProps) {
       await deleteProject(projectId);
       if (selectedProjectId === projectId) {
         setSelectedProjectId('ALL');
+        executeServerFilter('ALL', selectedPriority, searchQuery);
       }
     });
   }
@@ -79,7 +149,7 @@ export default function DashboardView({ projects, tasks }: DashboardViewProps) {
       <Sidebar
         projects={projects}
         selectedProjectId={selectedProjectId}
-        onSelectProject={setSelectedProjectId}
+        onSelectProject={handleSelectProject}
         onOpenNewProjectModal={() => setIsNewProjectModalOpen(true)}
         onDeleteProject={handleDeleteProject}
       />
@@ -88,31 +158,46 @@ export default function DashboardView({ projects, tasks }: DashboardViewProps) {
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
         {/* Top Stats & Filter Header */}
         <StatsHeader
-          totalCount={filteredTasks.length}
+          totalCount={optimisticTasks.length}
           todoCount={todoCount}
           inProgressCount={inProgressCount}
           doneCount={doneCount}
           activeView={activeView}
           onChangeView={setActiveView}
           searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
+          onSearchChange={handleSearchChange}
           selectedPriority={selectedPriority}
-          onPriorityChange={setSelectedPriority}
+          onPriorityChange={handlePriorityChange}
           onOpenNewTaskModal={() => setIsNewTaskModalOpen(true)}
+          isFiltering={isPending}
         />
 
-        {/* View Content (Kanban or Table) */}
-        {activeView === 'KANBAN' ? (
+        {/* View Content (Kanban, Table, or Project Cards) */}
+        {activeView === 'KANBAN' && (
           <KanbanBoard
-            tasks={filteredTasks}
+            tasks={optimisticTasks}
             onUpdateStatus={handleUpdateStatus}
             onDeleteTask={handleDeleteTask}
           />
-        ) : (
+        )}
+
+        {activeView === 'LIST' && (
           <TaskTableView
-            tasks={filteredTasks}
+            tasks={optimisticTasks}
             onUpdateStatus={handleUpdateStatus}
             onDeleteTask={handleDeleteTask}
+          />
+        )}
+
+        {activeView === 'PROJECTS' && (
+          <ProjectCardsView
+            projects={projects}
+            onSelectProject={(projectId) => {
+              handleSelectProject(projectId);
+              setActiveView('KANBAN');
+            }}
+            onOpenNewProjectModal={() => setIsNewProjectModalOpen(true)}
+            onDeleteProject={handleDeleteProject}
           />
         )}
       </main>
